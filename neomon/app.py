@@ -148,18 +148,41 @@ class CPUPanel(Static):
         spark = braille_spark if app.use_braille else block_spark
 
         t = Text(overflow="fold")
+
+        # ── headline: name + topology ─────────────────────────────────────────
         t.append(s.cpu_name[:38], style="bold white")
         t.append(f"  {s.cpu_physical}C/{s.cpu_logical}T", style=f"dim {tc['dim']}")
-        if s.cpu_freq:
-            t.append(f"  {s.cpu_freq / 1000:.2f} GHz", style=f"dim {tc['dim']}")
-        t.append("\n\n")
+        t.append("\n")
 
+        # ── stats row: clock · temp · power ───────────────────────────────────
+        if s.cpu_freq:
+            ghz = s.cpu_freq / 1000
+            if s.cpu_freq_max and abs(s.cpu_freq_max - s.cpu_freq) > 50:
+                t.append(f"Clock  {ghz:.2f} GHz  (max {s.cpu_freq_max/1000:.2f} GHz)", style=f"dim {tc['dim']}")
+            else:
+                t.append(f"Clock  {ghz:.2f} GHz", style=f"dim {tc['dim']}")
+
+        if s.cpu_temp is not None:
+            t.append("   Temp ")
+            t.append(f"{s.cpu_temp:.0f}°C", style=tcolor(s.cpu_temp))
+        else:
+            t.append("   Temp N/A", style=f"dim {tc['dim']}")
+
+        if s.cpu_power is not None:
+            t.append("   Power ")
+            t.append(f"{s.cpu_power:.1f} W", style=pcolor(s.cpu_power / 2, 40, 70))
+        t.append("\n")
+
+        t.append("\n")
+
+        # ── total bar + sparkline ─────────────────────────────────────────────
         t.append(f"Total  {s.cpu_total:5.1f}%  ")
         t.append_text(bar(s.cpu_total, 22))
         t.append("  ")
         t.append_text(spark(list(s.cpu_hist), 18, tc["cpu"]))
         t.append("\n\n")
 
+        # ── per-core bars (two columns) ───────────────────────────────────────
         cores = s.cpu_per
         half  = (len(cores) + 1) // 2
         for i in range(half):
@@ -352,6 +375,11 @@ class SearchBar(Horizontal):
     def compose(self) -> ComposeResult:
         yield Label("🔍 Filter: ")
         yield Input(placeholder="name or PID…", id="search-input")
+
+    def on_mount(self) -> None:
+        # Prevent the hidden Input from silently capturing focus & keypresses.
+        # We re-enable it only when the search bar is made visible.
+        self.query_one(Input).can_focus = False
 
     @on(Input.Changed, "#search-input")
     def _changed(self, event: Input.Changed) -> None:
@@ -605,9 +633,51 @@ class NeoMon(App):
     def on_mount(self) -> None:
         self._apply_border_titles()
         self.set_interval(2.0, self._sync)
+        # Give keyboard focus to the process table immediately so
+        # the hidden search Input never captures it by default.
+        self.call_after_refresh(self._focus_table)
+
+    def _focus_table(self) -> None:
+        try:
+            self.query_one("#proc-table", DataTable).focus()
+        except Exception:
+            pass
 
     def _sync(self) -> None:
         self.snap = self.collector.snap
+
+    # Instant re-render when sort/braille changes (don't wait for next tick)
+    def watch_sort_key(self, _: str) -> None:
+        try:
+            self.query_one(ProcessPanel)._tick()
+        except Exception:
+            pass
+
+    def watch_use_braille(self, _: bool) -> None:
+        for cls in (CPUPanel, MemPanel, GPUPanel, NetPanel):
+            try:
+                self.query_one(cls)._tick()
+            except Exception:
+                pass
+
+    # Fallback key handler – fires even if priority=True binding is missed
+    # (e.g. some Textual versions let focused widgets consume keys first)
+    def on_key(self, event) -> None:
+        sbar = self.query_one("#search-bar", SearchBar)
+        if sbar.has_class("visible"):
+            return  # search Input has focus; let it handle everything
+        handled = True
+        k = event.key
+        if   k in ("p", "c"): self.sort_key = "cpu"
+        elif k == "m":         self.sort_key = "mem"
+        elif k == "n":         self.sort_key = "name"
+        elif k == "i":         self.sort_key = "pid"
+        elif k == "b":         self.use_braille = not self.use_braille
+        elif k == "k":         self._kill(force=False)
+        elif k == "K":         self._kill(force=True)
+        else:                  handled = False
+        if handled:
+            event.stop()
 
     # ── theming ──────────────────────────────────────────────────────────────
 
@@ -643,12 +713,11 @@ class NeoMon(App):
             sbar.remove_class("visible")
             self.filter_str = ""
             inp.value = ""
-            try:
-                self.query_one("#proc-table", DataTable).focus()
-            except Exception:
-                pass
+            inp.can_focus = False
+            self._focus_table()
         else:
             sbar.add_class("visible")
+            inp.can_focus = True
             inp.focus()
 
     def action_clear_search(self) -> None:
@@ -656,11 +725,10 @@ class NeoMon(App):
         if sbar.has_class("visible"):
             sbar.remove_class("visible")
             self.filter_str = ""
-            sbar.query_one(Input).value = ""
-            try:
-                self.query_one("#proc-table", DataTable).focus()
-            except Exception:
-                pass
+            inp = sbar.query_one(Input)
+            inp.value = ""
+            inp.can_focus = False
+            self._focus_table()
 
     def action_toggle_braille(self) -> None:
         self.use_braille = not self.use_braille

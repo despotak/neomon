@@ -39,6 +39,8 @@ class Snap:
     cpu_physical: int = 1
     cpu_name: str = "CPU"
     cpu_hist: deque = field(default_factory=lambda: deque([0.0] * HIST, maxlen=HIST))
+    cpu_temp: Optional[float] = None    # °C package temperature (if available)
+    cpu_power: Optional[float] = None   # W package power (if available)
 
     # ── Memory ────────────────────────────────────────────────────────────────
     ram_used: float = 0.0    # GB
@@ -276,10 +278,57 @@ class Collector:
             (datetime.now() - datetime.fromtimestamp(s.boot_time)).total_seconds()
         )
 
+    # ── CPU temp / power (WMI, cached) ───────────────────────────────────────
+
+    def _fetch_cpu_hw(self) -> None:
+        """
+        Try multiple sources for CPU package temp and power.
+        Runs in the GPU thread (already separate) so slow calls are fine.
+        Priority:
+          1. LibreHardwareMonitor / OpenHardwareMonitor WMI (most accurate)
+          2. MSAcpi_ThermalZoneTemperature WMI (temp only, always present)
+        """
+        s = self.snap
+
+        # 1 – LibreHardwareMonitor / OpenHardwareMonitor WMI namespace
+        for ns in ("root/LibreHardwareMonitor", "root/OpenHardwareMonitor"):
+            try:
+                import wmi  # type: ignore
+                w = wmi.WMI(namespace=ns)
+                sensors = w.Sensor()
+                temps  = [float(x.Value) for x in sensors
+                          if x.SensorType == "Temperature" and "CPU Package" in x.Name]
+                powers = [float(x.Value) for x in sensors
+                          if x.SensorType == "Power"       and "CPU Package" in x.Name]
+                if temps:
+                    s.cpu_temp  = max(temps)
+                if powers:
+                    s.cpu_power = sum(powers)
+                if temps or powers:
+                    return
+            except Exception:
+                pass
+
+        # 2 – ACPI thermal zones via PowerShell (no extra packages needed)
+        try:
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                 "(Get-WmiObject MSAcpi_ThermalZoneTemperature "
+                 "-Namespace root/wmi).CurrentTemperature"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                raw = [float(v) for v in r.stdout.split() if v.strip()]
+                if raw:
+                    s.cpu_temp = (max(raw) / 10.0) - 273.15
+        except Exception:
+            pass
+
     # ── GPU loop (separate, slower) ───────────────────────────────────────────
 
     def _gpu_loop(self) -> None:
         while self._running:
+            self._fetch_cpu_hw()   # temp + power (slow WMI calls on this thread)
             s = self.snap
             try:
                 r = subprocess.run(
