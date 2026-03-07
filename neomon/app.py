@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import psutil
 from rich.text import Text
@@ -24,56 +23,50 @@ from .graph import bar, block_spark, braille_spark, fmt_bytes, pcolor, tcolor, u
 
 THEMES: dict[str, dict[str, str]] = {
     "default": {
-        "cpu": "cyan",        "mem": "magenta",   "gpu": "yellow",
-        "disk": "#5b8af5",    "net": "green",     "proc": "white",
-        "accent": "#00d7ff",  "dim": "#8b949e",
-        "bg": "#0d1117",      "surface": "#161b22", "border": "#21262d",
+        "cpu":    "cyan",       "mem":  "magenta",  "gpu":  "yellow",
+        "disk":   "#5b8af5",    "net":  "green",    "proc": "white",
+        "accent": "#00d7ff",    "dim":  "#8b949e",
     },
     "nord": {
-        "cpu": "#88c0d0",     "mem": "#b48ead",   "gpu": "#ebcb8b",
-        "disk": "#81a1c1",    "net": "#a3be8c",   "proc": "#d8dee9",
-        "accent": "#88c0d0",  "dim": "#4c566a",
-        "bg": "#2e3440",      "surface": "#3b4252", "border": "#4c566a",
+        "cpu":    "#88c0d0",    "mem":  "#b48ead",  "gpu":  "#ebcb8b",
+        "disk":   "#81a1c1",    "net":  "#a3be8c",  "proc": "#d8dee9",
+        "accent": "#88c0d0",    "dim":  "#4c566a",
     },
     "gruvbox": {
-        "cpu": "#83a598",     "mem": "#d3869b",   "gpu": "#fabd2f",
-        "disk": "#458588",    "net": "#b8bb26",   "proc": "#ebdbb2",
-        "accent": "#83a598",  "dim": "#928374",
-        "bg": "#282828",      "surface": "#3c3836", "border": "#504945",
+        "cpu":    "#83a598",    "mem":  "#d3869b",  "gpu":  "#fabd2f",
+        "disk":   "#458588",    "net":  "#b8bb26",  "proc": "#ebdbb2",
+        "accent": "#83a598",    "dim":  "#928374",
     },
     "dracula": {
-        "cpu": "#8be9fd",     "mem": "#ff79c6",   "gpu": "#f1fa8c",
-        "disk": "#6272a4",    "net": "#50fa7b",   "proc": "#f8f8f2",
-        "accent": "#bd93f9",  "dim": "#6272a4",
-        "bg": "#282a36",      "surface": "#44475a", "border": "#6272a4",
+        "cpu":    "#8be9fd",    "mem":  "#ff79c6",  "gpu":  "#f1fa8c",
+        "disk":   "#6272a4",    "net":  "#50fa7b",  "proc": "#f8f8f2",
+        "accent": "#bd93f9",    "dim":  "#6272a4",
     },
     "monokai": {
-        "cpu": "#66d9e8",     "mem": "#ae81ff",   "gpu": "#e6db74",
-        "disk": "#a6e22e",    "net": "#f92672",   "proc": "#f8f8f2",
-        "accent": "#fd971f",  "dim": "#75715e",
-        "bg": "#272822",      "surface": "#3e3d32", "border": "#49483e",
+        "cpu":    "#66d9e8",    "mem":  "#ae81ff",  "gpu":  "#e6db74",
+        "disk":   "#a6e22e",    "net":  "#f92672",  "proc": "#f8f8f2",
+        "accent": "#fd971f",    "dim":  "#75715e",
     },
 }
-
 
 # ── Help Modal ────────────────────────────────────────────────────────────────
 
 class HelpScreen(ModalScreen):
     BINDINGS = [
-        Binding("escape", "dismiss", "Close"),
-        Binding("question_mark", "dismiss", "Close"),
-        Binding("h", "dismiss", "Close"),
+        Binding("escape",        "dismiss", "Close", priority=True),
+        Binding("question_mark", "dismiss", "Close", priority=True),
+        Binding("h",             "dismiss", "Close", priority=True),
     ]
     CSS = """
     HelpScreen { align: center middle; }
     #help-box {
-        width: 64; height: auto; max-height: 36;
-        background: $surface; border: double $border;
-        padding: 1 2; color: $text;
+        width: 62; height: auto; max-height: 36;
+        background: #161b22; border: double #30363d;
+        padding: 1 2; color: #c9d1d9;
     }
     #help-title {
         text-align: center; text-style: bold;
-        color: $accent; padding-bottom: 1;
+        color: #00d7ff; padding-bottom: 1;
     }
     """
 
@@ -102,7 +95,7 @@ class HelpScreen(ModalScreen):
   F1–F5                 Switch theme (Default/Nord/Gruvbox/Dracula/Monokai)
 
 [bold]Data[/bold]
-  Ctrl+S                Export full snapshot → ~/neomon_*.json
+  Ctrl+S                Export snapshot → ~/neomon_*.json
 
 [bold]General[/bold]
   ?  h                  This help screen
@@ -112,8 +105,6 @@ class HelpScreen(ModalScreen):
 # ── Header ────────────────────────────────────────────────────────────────────
 
 class HeaderBar(Static):
-    DEFAULT_CSS = "HeaderBar { height: 1; }"
-
     def on_mount(self) -> None:
         self.set_interval(1.0, self.refresh)
 
@@ -124,33 +115,25 @@ class HeaderBar(Static):
         now = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
 
         t = Text()
-        t.append(f"  ⬡ NeoMon  ", style=f"bold {tc['accent']}")
+        t.append("  ⬡ NeoMon  ", style=f"bold {tc['accent']}")
         t.append(s.hostname, style="bold white")
         t.append("  ·  ", style=f"dim {tc['dim']}")
         t.append(s.os_name[:55], style=f"dim {tc['dim']}")
         t.append("  ·  up ", style=f"dim {tc['dim']}")
         t.append(uptime_str(s.uptime), style="green")
-
-        # Battery indicator
         if s.batt_pct is not None:
-            icon  = "⚡" if s.batt_plugged else "🔋"
-            bc    = pcolor(100.0 - s.batt_pct, 30, 15)   # warn when LOW
+            icon = "⚡" if s.batt_plugged else "🔋"
+            bc   = pcolor(100.0 - s.batt_pct, 30, 15)
             t.append(f"  {icon} ", style=f"dim {tc['dim']}")
             t.append(f"{s.batt_pct:.0f}%", style=bc)
-
         t.append(f"  {now}  ", style="bold white")
-        theme_names = list(THEMES)
-        idx = theme_names.index(app.theme_name)
-        t.append(f"[F1-F5: theme]  ", style=f"dim {tc['dim']}")
-        t.append(f"{app.theme_name}", style=f"dim {tc['accent']}")
+        t.append(f"theme:{app.theme_name}", style=f"dim {tc['dim']}")
         return t
 
 
 # ── CPU Panel ─────────────────────────────────────────────────────────────────
 
 class CPUPanel(Static):
-    DEFAULT_CSS = "CPUPanel { height: 100%; }"
-
     def on_mount(self) -> None:
         self.set_interval(2.0, self._tick)
         self._tick()
@@ -160,12 +143,12 @@ class CPUPanel(Static):
 
     def _build(self) -> Text:
         app: NeoMon = self.app  # type: ignore[assignment]
-        s   = app.snap
-        tc  = app.theme_colors
+        s     = app.snap
+        tc    = app.theme_colors
         spark = braille_spark if app.use_braille else block_spark
 
         t = Text(overflow="fold")
-        t.append(s.cpu_name[:40], style="bold white")
+        t.append(s.cpu_name[:38], style="bold white")
         t.append(f"  {s.cpu_physical}C/{s.cpu_logical}T", style=f"dim {tc['dim']}")
         if s.cpu_freq:
             t.append(f"  {s.cpu_freq / 1000:.2f} GHz", style=f"dim {tc['dim']}")
@@ -195,8 +178,6 @@ class CPUPanel(Static):
 # ── Memory Panel ──────────────────────────────────────────────────────────────
 
 class MemPanel(Static):
-    DEFAULT_CSS = "MemPanel { height: 100%; }"
-
     def on_mount(self) -> None:
         self.set_interval(2.0, self._tick)
         self._tick()
@@ -206,8 +187,8 @@ class MemPanel(Static):
 
     def _build(self) -> Text:
         app: NeoMon = self.app  # type: ignore[assignment]
-        s   = app.snap
-        tc  = app.theme_colors
+        s     = app.snap
+        tc    = app.theme_colors
         spark = braille_spark if app.use_braille else block_spark
 
         t = Text(overflow="fold")
@@ -226,15 +207,13 @@ class MemPanel(Static):
         t.append("\n\n")
 
         t.append(f"Available  {s.ram_available:.1f} GB\n", style=f"dim {tc['dim']}")
-        t.append(f"Committed  {s.ram_used:.1f} GB\n", style=f"dim {tc['dim']}")
+        t.append(f"Committed  {s.ram_used:.1f} GB\n",      style=f"dim {tc['dim']}")
         return t
 
 
 # ── GPU Panel ─────────────────────────────────────────────────────────────────
 
 class GPUPanel(Static):
-    DEFAULT_CSS = "GPUPanel { height: 100%; }"
-
     def on_mount(self) -> None:
         self.set_interval(2.0, self._tick)
         self._tick()
@@ -244,14 +223,14 @@ class GPUPanel(Static):
 
     def _build(self) -> Text:
         app: NeoMon = self.app  # type: ignore[assignment]
-        s   = app.snap
-        tc  = app.theme_colors
+        s     = app.snap
+        tc    = app.theme_colors
         spark = braille_spark if app.use_braille else block_spark
 
         t = Text(overflow="fold")
         if not s.gpu_ok:
             t.append("nvidia-smi unavailable\n", style=f"dim {tc['dim']}")
-            t.append("AMD / Intel / no discrete GPU?", style=f"dim {tc['dim']}")
+            t.append("(no NVIDIA GPU detected)", style=f"dim {tc['dim']}")
             return t
 
         t.append(s.gpu_name[:36], style="bold white")
@@ -272,14 +251,10 @@ class GPUPanel(Static):
 
         sep   = Text("  ·  ", style=f"dim {tc['dim']}")
         parts: list[Text] = []
-        if s.gpu_temp is not None:
-            parts.append(Text(f"{s.gpu_temp:.0f}°C", style=tcolor(s.gpu_temp)))
-        if s.gpu_fan is not None:
-            parts.append(Text(f"Fan {s.gpu_fan:.0f}%", style=f"dim {tc['dim']}"))
-        if s.gpu_clk is not None:
-            parts.append(Text(f"Core {s.gpu_clk:.0f} MHz", style=f"dim {tc['dim']}"))
-        if s.gpu_mclk is not None:
-            parts.append(Text(f"Mem {s.gpu_mclk:.0f} MHz", style=f"dim {tc['dim']}"))
+        if s.gpu_temp  is not None: parts.append(Text(f"{s.gpu_temp:.0f}°C",  style=tcolor(s.gpu_temp)))
+        if s.gpu_fan   is not None: parts.append(Text(f"Fan {s.gpu_fan:.0f}%",  style=f"dim {tc['dim']}"))
+        if s.gpu_clk   is not None: parts.append(Text(f"Core {s.gpu_clk:.0f}",  style=f"dim {tc['dim']}"))
+        if s.gpu_mclk  is not None: parts.append(Text(f"Mem {s.gpu_mclk:.0f}",  style=f"dim {tc['dim']}"))
         if s.gpu_power is not None:
             pw = Text("Power ")
             if s.gpu_plim:
@@ -302,8 +277,6 @@ class GPUPanel(Static):
 # ── Disk Panel ────────────────────────────────────────────────────────────────
 
 class DiskPanel(Static):
-    DEFAULT_CSS = "DiskPanel { height: 100%; }"
-
     def on_mount(self) -> None:
         self.set_interval(2.0, self._tick)
         self._tick()
@@ -325,7 +298,6 @@ class DiskPanel(Static):
             t.append("\n")
             t.append_text(bar(pct, 26, 80, 92))
             t.append("\n")
-
         t.append("\n")
         t.append("Read   ", style=f"dim {tc['dim']}")
         t.append(fmt_bytes(s.disk_r_bps), style="green")
@@ -337,8 +309,6 @@ class DiskPanel(Static):
 # ── Network Panel ─────────────────────────────────────────────────────────────
 
 class NetPanel(Static):
-    DEFAULT_CSS = "NetPanel { height: 100%; }"
-
     def on_mount(self) -> None:
         self.set_interval(2.0, self._tick)
         self._tick()
@@ -348,8 +318,8 @@ class NetPanel(Static):
 
     def _build(self) -> Text:
         app: NeoMon = self.app  # type: ignore[assignment]
-        s   = app.snap
-        tc  = app.theme_colors
+        s     = app.snap
+        tc    = app.theme_colors
         spark = braille_spark if app.use_braille else block_spark
 
         t = Text(overflow="fold")
@@ -379,18 +349,6 @@ class NetPanel(Static):
 # ── Search Bar ────────────────────────────────────────────────────────────────
 
 class SearchBar(Horizontal):
-    DEFAULT_CSS = """
-    SearchBar {
-        height: 3; display: none; padding: 0 1;
-    }
-    SearchBar.visible { display: block; }
-    SearchBar Label {
-        height: 3; content-align: left middle;
-        width: auto; padding-right: 1;
-    }
-    SearchBar Input { width: 40; }
-    """
-
     def compose(self) -> ComposeResult:
         yield Label("🔍 Filter: ")
         yield Input(placeholder="name or PID…", id="search-input")
@@ -403,11 +361,6 @@ class SearchBar(Horizontal):
 # ── Process Panel ─────────────────────────────────────────────────────────────
 
 class ProcessPanel(Widget):
-    DEFAULT_CSS = """
-    ProcessPanel { height: 1fr; }
-    ProcessPanel DataTable { height: 1fr; }
-    """
-
     def compose(self) -> ComposeResult:
         yield DataTable(id="proc-table", cursor_type="row", zebra_stripes=True)
 
@@ -417,15 +370,16 @@ class ProcessPanel(Widget):
         self.set_interval(2.0, self._tick)
 
     def _tick(self) -> None:
-        app: NeoMon       = self.app  # type: ignore[assignment]
-        s                 = app.snap
-        sort_key: str     = app.sort_key
-        filter_str: str   = app.filter_str.lower()
-        tbl               = self.query_one(DataTable)
+        app: NeoMon     = self.app  # type: ignore[assignment]
+        s               = app.snap
+        sort_key: str   = app.sort_key
+        filter_str: str = app.filter_str.lower()
+        tbl             = self.query_one(DataTable)
 
         procs = list(s.procs)
         if filter_str:
-            procs = [p for p in procs if filter_str in p.name.lower()
+            procs = [p for p in procs
+                     if filter_str in p.name.lower()
                      or filter_str in str(p.pid)
                      or filter_str in p.user.lower()]
 
@@ -458,21 +412,19 @@ class ProcessPanel(Widget):
         sort_lbl = {"cpu": "CPU↓", "mem": "MEM↓", "name": "Name↑", "pid": "PID↑"}.get(sort_key, "?")
         shown    = len(procs)
         total    = s.proc_total
-        flt_str  = f"  filter: '{filter_str}'" if filter_str else ""
+        flt_str  = f"  filter:'{filter_str}'" if filter_str else ""
         self.border_title = f"Processes  {shown}/{total}  sort:{sort_lbl}{flt_str}"
 
 
 # ── Status Footer ─────────────────────────────────────────────────────────────
 
 class StatusFooter(Static):
-    DEFAULT_CSS = "StatusFooter { height: 1; }"
-
     def on_mount(self) -> None:
-        self.update(self._build())
+        self._redraw()
 
-    def _build(self) -> Text:
+    def _redraw(self) -> None:
         app: NeoMon = self.app  # type: ignore[assignment]
-        tc = app.theme_colors
+        tc  = app.theme_colors
         dim = f"dim {tc['dim']}"
         key = f"bold {tc['accent']}"
 
@@ -484,13 +436,13 @@ class StatusFooter(Static):
             ("[k/K]", "Kill"),
             ("[b]", "Braille"),
             ("[F1-F5]", "Theme"),
-            ("[Ctrl+S]", "Export"),
+            ("[^S]", "Export"),
             ("[?]", "Help"),
         ]
         for k, v in pairs:
             t.append(f"  {k}", style=key)
             t.append(f" {v}", style=dim)
-        return t
+        self.update(t)
 
 
 # ── Main App ──────────────────────────────────────────────────────────────────
@@ -500,41 +452,128 @@ class NeoMon(App):
 
     TITLE = "NeoMon"
 
+    # All CSS in one place with hardcoded colors – no undefined $variables
     CSS = """
-    Screen  { layout: vertical; }
-    HeaderBar { background: $surface; color: $text; }
-    #top-row  { height: 15; }
-    #mid-row  { height: 13; }
-    CPUPanel, MemPanel, GPUPanel { border: solid $border; border-title-style: bold; }
-    DiskPanel, NetPanel          { border: solid $border; border-title-style: bold; }
-    ProcessPanel { border: solid $border; border-title-style: bold; }
-    SearchBar { background: $surface; }
-    StatusFooter { background: $surface; }
-    DataTable { background: $background; }
-    DataTable > .datatable--header { text-style: bold; color: $accent; }
-    DataTable > .datatable--cursor { background: $surface; }
+    Screen {
+        layout: vertical;
+        background: #0d1117;
+    }
+
+    HeaderBar {
+        height: 1;
+        background: #161b22;
+        color: #c9d1d9;
+    }
+
+    #top-row { height: 14; }
+    #mid-row { height: 12; }
+
+    /* Each panel fills its share of the horizontal space */
+    CPUPanel {
+        width: 1fr; height: 100%;
+        border: solid #30363d;
+        border-title-color: cyan;
+        border-title-style: bold;
+        padding: 0 1;
+    }
+    MemPanel {
+        width: 1fr; height: 100%;
+        border: solid #30363d;
+        border-title-color: magenta;
+        border-title-style: bold;
+        padding: 0 1;
+    }
+    GPUPanel {
+        width: 1fr; height: 100%;
+        border: solid #30363d;
+        border-title-color: yellow;
+        border-title-style: bold;
+        padding: 0 1;
+    }
+    DiskPanel {
+        width: 1fr; height: 100%;
+        border: solid #30363d;
+        border-title-color: #5b8af5;
+        border-title-style: bold;
+        padding: 0 1;
+    }
+    NetPanel {
+        width: 1fr; height: 100%;
+        border: solid #30363d;
+        border-title-color: green;
+        border-title-style: bold;
+        padding: 0 1;
+    }
+
+    ProcessPanel {
+        height: 1fr;
+        border: solid #30363d;
+        border-title-color: white;
+        border-title-style: bold;
+    }
+
+    SearchBar {
+        height: 3;
+        display: none;
+        background: #161b22;
+        padding: 0 1;
+    }
+    SearchBar.visible { display: block; }
+    SearchBar Label {
+        height: 3;
+        content-align: left middle;
+        width: auto;
+        padding-right: 1;
+        color: #8b949e;
+    }
+    SearchBar Input {
+        width: 40;
+        background: #0d1117;
+        border: solid #30363d;
+        color: #c9d1d9;
+    }
+
+    StatusFooter {
+        height: 1;
+        background: #161b22;
+        color: #8b949e;
+    }
+
+    DataTable {
+        height: 1fr;
+        background: #0d1117;
+    }
+    DataTable > .datatable--header {
+        text-style: bold;
+        color: #00d7ff;
+    }
+    DataTable > .datatable--cursor {
+        background: #21262d;
+        color: #ffffff;
+    }
     """
 
+    # priority=True makes these fire before the focused DataTable sees the key
     BINDINGS = [
-        Binding("q",             "quit",              "Quit",       show=False),
-        Binding("p",             "sort_cpu",          "Sort CPU",   show=False),
-        Binding("c",             "sort_cpu",          "Sort CPU",   show=False),
-        Binding("m",             "sort_mem",          "Sort MEM",   show=False),
-        Binding("n",             "sort_name",         "Sort Name",  show=False),
-        Binding("i",             "sort_pid",          "Sort PID",   show=False),
-        Binding("slash",         "toggle_search",     "Search",     show=False),
-        Binding("escape",        "clear_search",      "Clear",      show=False),
-        Binding("k",             "kill_proc",         "Kill",       show=False),
-        Binding("K",             "force_kill_proc",   "Force Kill", show=False),
-        Binding("b",             "toggle_braille",    "Braille",    show=False),
-        Binding("f1",            "theme('default')",  "Default",    show=False),
-        Binding("f2",            "theme('nord')",     "Nord",       show=False),
-        Binding("f3",            "theme('gruvbox')",  "Gruvbox",    show=False),
-        Binding("f4",            "theme('dracula')",  "Dracula",    show=False),
-        Binding("f5",            "theme('monokai')",  "Monokai",    show=False),
-        Binding("ctrl+s",        "export",            "Export",     show=False),
-        Binding("question_mark", "help",              "Help",       show=False),
-        Binding("h",             "help",              "Help",       show=False),
+        Binding("q",             "quit",             "Quit",       show=False, priority=True),
+        Binding("p",             "sort_cpu",         "Sort CPU",   show=False, priority=True),
+        Binding("c",             "sort_cpu",         "Sort CPU",   show=False, priority=True),
+        Binding("m",             "sort_mem",         "Sort MEM",   show=False, priority=True),
+        Binding("n",             "sort_name",        "Sort Name",  show=False, priority=True),
+        Binding("i",             "sort_pid",         "Sort PID",   show=False, priority=True),
+        Binding("slash",         "toggle_search",    "Search",     show=False, priority=True),
+        Binding("escape",        "clear_search",     "Clear",      show=False),
+        Binding("k",             "kill_proc",        "Kill",       show=False, priority=True),
+        Binding("K",             "force_kill",       "Force Kill", show=False, priority=True),
+        Binding("b",             "toggle_braille",   "Braille",    show=False, priority=True),
+        Binding("f1",            "set_theme('default')",  "Default",  show=False),
+        Binding("f2",            "set_theme('nord')",     "Nord",     show=False),
+        Binding("f3",            "set_theme('gruvbox')",  "Gruvbox",  show=False),
+        Binding("f4",            "set_theme('dracula')",  "Dracula",  show=False),
+        Binding("f5",            "set_theme('monokai')",  "Monokai",  show=False),
+        Binding("ctrl+s",        "export",           "Export",     show=False, priority=True),
+        Binding("question_mark", "help",             "Help",       show=False, priority=True),
+        Binding("h",             "help",             "Help",       show=False, priority=True),
     ]
 
     sort_key:    reactive[str]  = reactive("cpu")
@@ -564,57 +603,31 @@ class NeoMon(App):
         yield StatusFooter(id="footer")
 
     def on_mount(self) -> None:
-        self._apply_theme("default")
-        self._update_border_titles()
+        self._apply_border_titles()
         self.set_interval(2.0, self._sync)
 
     def _sync(self) -> None:
-        """Keep snap reference current."""
         self.snap = self.collector.snap
 
     # ── theming ──────────────────────────────────────────────────────────────
 
-    def _apply_theme(self, name: str) -> None:
-        tc = THEMES.get(name, THEMES["default"])
-        self.theme_colors = tc
-        self.theme_name   = name
-        self.app.theme    = "textual-dark"   # always dark base
-
-        # Override CSS variables on the Screen
-        self.screen.styles.background         = tc["bg"]
-        self.screen.styles.color              = "#c9d1d9"
-
-        # Update border titles after theme change
-        self._update_border_titles()
-        self.refresh(layout=True)
-
-    def _update_border_titles(self) -> None:
+    def _apply_border_titles(self) -> None:
         tc = self.theme_colors
-        mapping = {
-            "#cpu":   ("CPU",     tc["cpu"]),
-            "#mem":   ("Memory",  tc["mem"]),
-            "#gpu":   ("GPU",     tc["gpu"]),
-            "#disk":  ("Disk",    tc["disk"]),
-            "#net":   ("Network", tc["net"]),
+        panels = {
+            "#cpu":   ("CPU",      tc["cpu"]),
+            "#mem":   ("Memory",   tc["mem"]),
+            "#gpu":   ("GPU",      tc["gpu"]),
+            "#disk":  ("Disk",     tc["disk"]),
+            "#net":   ("Network",  tc["net"]),
             "#procs": ("Processes", tc["proc"]),
         }
-        for selector, (title, color) in mapping.items():
+        for sel, (title, color) in panels.items():
             try:
-                w = self.query_one(selector)
+                w = self.query_one(sel)
                 w.border_title = title
                 w.styles.border_title_color = color
             except Exception:
                 pass
-
-    def watch_theme_name(self, name: str) -> None:
-        self._update_border_titles()
-        # Refresh footer to reflect theme name
-        try:
-            self.query_one(StatusFooter).update(
-                self.query_one(StatusFooter)._build()
-            )
-        except Exception:
-            pass
 
     # ── actions ──────────────────────────────────────────────────────────────
 
@@ -624,23 +637,26 @@ class NeoMon(App):
     def action_sort_pid(self)  -> None: self.sort_key = "pid"
 
     def action_toggle_search(self) -> None:
-        bar = self.query_one("#search-bar", SearchBar)
-        if bar.has_class("visible"):
-            bar.remove_class("visible")
+        sbar = self.query_one("#search-bar", SearchBar)
+        inp  = sbar.query_one(Input)
+        if sbar.has_class("visible"):
+            sbar.remove_class("visible")
             self.filter_str = ""
-            bar.query_one(Input).value = ""
+            inp.value = ""
+            try:
+                self.query_one("#proc-table", DataTable).focus()
+            except Exception:
+                pass
         else:
-            bar.add_class("visible")
-            bar.query_one(Input).focus()
+            sbar.add_class("visible")
+            inp.focus()
 
     def action_clear_search(self) -> None:
-        bar = self.query_one("#search-bar", SearchBar)
-        if bar.has_class("visible"):
-            bar.remove_class("visible")
+        sbar = self.query_one("#search-bar", SearchBar)
+        if sbar.has_class("visible"):
+            sbar.remove_class("visible")
             self.filter_str = ""
-            bar.query_one(Input).value = ""
-        else:
-            # Escape with no search open → return focus to process table
+            sbar.query_one(Input).value = ""
             try:
                 self.query_one("#proc-table", DataTable).focus()
             except Exception:
@@ -648,31 +664,36 @@ class NeoMon(App):
 
     def action_toggle_braille(self) -> None:
         self.use_braille = not self.use_braille
-        mode = "braille" if self.use_braille else "block"
-        self.notify(f"Graph mode: {mode}", timeout=2)
+        self.notify(f"Graph mode: {'braille' if self.use_braille else 'block'}", timeout=2)
 
-    def action_theme(self, name: str) -> None:
-        self._apply_theme(name)
+    def action_set_theme(self, name: str) -> None:
+        tc = THEMES.get(name, THEMES["default"])
+        self.theme_colors = tc
+        self.theme_name   = name
+        self._apply_border_titles()
+        try:
+            self.query_one(StatusFooter)._redraw()
+        except Exception:
+            pass
         self.notify(f"Theme: {name}", timeout=2)
 
-    def action_kill_proc(self)       -> None: self._kill(force=False)
-    def action_force_kill_proc(self) -> None: self._kill(force=True)
+    def action_kill_proc(self)  -> None: self._kill(force=False)
+    def action_force_kill(self) -> None: self._kill(force=True)
 
     def _kill(self, force: bool) -> None:
         try:
-            tbl = self.query_one("#proc-table", DataTable)
+            tbl  = self.query_one("#proc-table", DataTable)
             if tbl.row_count == 0:
                 return
             row  = tbl.get_row_at(tbl.cursor_row)
             pid  = int(str(row[0]))
             name = str(row[1])
             proc = psutil.Process(pid)
-            if force:
-                proc.kill()
-            else:
-                proc.terminate()
-            verb = "Force-killed" if force else "Terminated"
-            self.notify(f"{verb} PID {pid} ({name})", timeout=3)
+            proc.kill() if force else proc.terminate()
+            self.notify(
+                f"{'Force-killed' if force else 'Terminated'} PID {pid} ({name})",
+                timeout=3,
+            )
         except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
             self.notify(f"Cannot kill: {e}", severity="error", timeout=4)
         except Exception as e:
@@ -687,24 +708,21 @@ class NeoMon(App):
             "cpu": {
                 "name": s.cpu_name, "total_pct": s.cpu_total,
                 "per_core_pct": list(s.cpu_per), "freq_mhz": s.cpu_freq,
-                "physical_cores": s.cpu_physical, "logical_cores": s.cpu_logical,
+                "physical": s.cpu_physical, "logical": s.cpu_logical,
             },
             "memory": {
                 "ram_used_gb": round(s.ram_used, 3),
                 "ram_total_gb": round(s.ram_total, 3),
                 "ram_pct": s.ram_pct,
                 "swap_used_gb": round(s.swap_used, 3),
-                "swap_total_gb": round(s.swap_total, 3),
                 "swap_pct": s.swap_pct,
             },
             "gpu": {
-                "available": s.gpu_ok,
-                "name": s.gpu_name,
+                "available": s.gpu_ok, "name": s.gpu_name,
                 "util_pct": s.gpu_util,
                 "vram_used_gb": round(s.gpu_vram_used, 3),
                 "vram_total_gb": round(s.gpu_vram_total, 3),
-                "temp_c": s.gpu_temp,
-                "power_w": s.gpu_power,
+                "temp_c": s.gpu_temp, "power_w": s.gpu_power,
             },
             "disk": {
                 "partitions": s.disk_parts,
@@ -726,7 +744,7 @@ class NeoMon(App):
             },
         }
         path.write_text(json.dumps(data, indent=2))
-        self.notify(f"Snapshot → {path.name}", timeout=4)
+        self.notify(f"Snapshot saved → {path.name}", timeout=4)
 
     def action_help(self) -> None:
         self.push_screen(HelpScreen())
