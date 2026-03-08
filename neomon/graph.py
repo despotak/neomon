@@ -19,24 +19,39 @@ from rich.text import Text
 
 _L = (0x00, 0x40, 0x44, 0x46, 0x47)   # left  column fill levels 0-4
 _R = (0x00, 0x80, 0xA0, 0xB0, 0xB8)   # right column fill levels 0-4
+_B = " ▁▂▃▄▅▆▇█"                      # block char fill levels 0-8
 
 
 def braille_spark(
     values: Sequence[float],
     width: int = 32,
     color: str = "bright_cyan",
+    fixed_max: float = 0.0,
 ) -> Text:
-    """Return a braille sparkline with 2× horizontal resolution vs. block chars."""
+    """
+    Return a braille sparkline with 2× horizontal resolution vs. block chars.
+
+    Args:
+        values:    Data points (most-recent last).
+        width:     Number of braille characters (each covers 2 data points).
+        color:     Rich color string.
+        fixed_max: If > 0, pin the scale to this maximum (e.g. 100.0 for
+                   percentage metrics).  If 0, auto-scale to max(values).
+    """
     n    = width * 2
     data = list(values)
     if len(data) < n:
         data = [0.0] * (n - len(data)) + data
     data = data[-n:]
-    mx   = max(data) if max(data) > 0 else 1.0
+    if fixed_max > 0:
+        mx = fixed_max
+    else:
+        _m = max(data)
+        mx = _m if _m > 0 else 1.0
     chars: list[str] = []
     for i in range(0, n, 2):
         l = min(round(data[i]     / mx * 4), 4)
-        r = min(round(data[i + 1] / mx * 4), 4) if i + 1 < n else 0
+        r = min(round(data[i + 1] / mx * 4), 4)
         chars.append(chr(0x2800 | _L[l] | _R[r]))
     return Text("".join(chars), style=color)
 
@@ -45,13 +60,23 @@ def block_spark(
     values: Sequence[float],
     width: int = 32,
     color: str = "bright_cyan",
+    fixed_max: float = 0.0,
 ) -> Text:
-    """Block-character sparkline (8 levels). Fallback for terminals without braille."""
-    _B   = " ▁▂▃▄▅▆▇█"
+    """
+    Block-character sparkline (8 levels). Fallback for terminals without braille.
+
+    Args:
+        fixed_max: If > 0, pin the scale to this maximum (e.g. 100.0 for
+                   percentage metrics).  If 0, auto-scale to max(values).
+    """
     data = list(values)[-width:]
     if not data:
         return Text("")
-    mx = max(data) if max(data) > 0 else 1.0
+    if fixed_max > 0:
+        mx = fixed_max
+    else:
+        _m = max(data)
+        mx = _m if _m > 0 else 1.0
     return Text("".join(_B[min(int(v / mx * 8), 8)] for v in data), style=color)
 
 
@@ -68,7 +93,7 @@ def bar(
     filled = int(width * pct / 100)
     color  = "red bold" if pct >= crit else "yellow" if pct >= warn else "green"
     t = Text()
-    t.append("█" * filled,        style=color)
+    t.append("█" * filled,           style=color)
     t.append("░" * (width - filled), style="bright_black")
     return t
 

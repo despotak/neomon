@@ -28,6 +28,9 @@ dependencies = [
     "textual>=0.70",
 ]
 
+[project.optional-dependencies]
+lhm = ["pythonnet>=3.0"]
+
 [project.scripts]
 neomon = "neomon.__main__:main"
 
